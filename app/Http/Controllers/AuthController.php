@@ -7,23 +7,21 @@ use Illuminate\Support\Facades\Auth;
 
 class AuthController extends Controller
 {
-    //halaman login
     public function showLogin()
     {
         return view('login');
     }
 
-    //buat proses login
     public function login(Request $request)
     {
         $credentials = $request->validate([
-            'email'    => ['required', 'email'],
-            'password' => ['required'],
+            'email'    => 'required|email',
+            'password' => 'required',
         ]);
 
         if (Auth::attempt($credentials)) {
             $request->session()->regenerate();
-            return redirect()->intended('/dashboard');
+            return redirect()->route('dashboard');
         }
 
         return back()->withErrors([
@@ -31,36 +29,32 @@ class AuthController extends Controller
         ])->onlyInput('email');
     }
 
-    //buat halaman register
     public function showRegister()
     {
-        return view('register'); // sesuaikan path jika di subfolder
+        return view('register');
     }
 
-    //buat proses register
     public function register(Request $request)
     {
-        $request->validate([
-            'email'    => ['required', 'email', 'unique:users'],
-            'password' => ['required', 'min:8', 'confirmed'],
+        $data = $request->validate([
+            'email'    => 'required|email|unique:users',
+            'password' => 'required|min:6|confirmed',
         ]);
 
-        //Buat user baru
-        \App\Models\User::create([
-            'email'    => $request->email,
-            'password' => bcrypt($request->password),
+        $user = \App\Models\User::create([
+            'email'    => $data['email'],
+            'password' => bcrypt($data['password']),
         ]);
 
-        Auth::attempt($request->only('email', 'password'));
-        return redirect('/dashboard');
+        Auth::login($user);
+        return redirect()->route('dashboard');
     }
 
-    //Logout
     public function logout(Request $request)
     {
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
-        return redirect('/login');
+        return redirect()->route('login');
     }
 }
