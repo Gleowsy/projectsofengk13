@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use App\Models\DailyCheckin;
 
 class CheckinController extends Controller
 {
@@ -23,7 +24,7 @@ class CheckinController extends Controller
             'stress_level'   => 'required|integer|min:1|max:5',
         ]);
 
-        \App\Models\DailyCheckin::create([
+        DailyCheckin::create([
             'user_id'        => auth()->id(),
             'energy_level'   => $request->energy_level,
             'focus_level'    => $request->focus_level,
@@ -34,7 +35,7 @@ class CheckinController extends Controller
             'date'           => today(),
         ]);
 
-        //  Hitung skor rata-rata 
+        //  Hitung skor rata-rata
         $score = (
             $request->energy_level +
             $request->focus_level  +
@@ -44,7 +45,7 @@ class CheckinController extends Controller
             (6 - $request->stress_level) // invert stress
         ) / 6;
 
-        //Tentukan kondisi berdasarkan skor 
+        //Tentukan kondisi berdasarkan skor
         if ($score <= 2) {
             $condition = ['level' => 'low',    'label' => 'Low Energy',    'class' => 'low'];
         } elseif ($score <= 3.5) {
@@ -61,7 +62,7 @@ class CheckinController extends Controller
 
     public function result()
     {
-        
+
         $condition = session('checkin_condition');
 
         if (!$condition) {

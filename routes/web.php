@@ -20,4 +20,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/checkin',        [CheckinController::class, 'index'])->name('checkin.index');
     Route::post('/checkin',       [CheckinController::class, 'store'])->name('checkin.store');
     Route::get('/checkin/result', [CheckinController::class, 'result'])->name('result');
+    Route::get('/Task', function () {
+    return view('Task');
+})->name('tasks.index');
 });
