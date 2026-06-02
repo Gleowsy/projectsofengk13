@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CheckinController;
+use App\Http\Controllers\ScheduleController;
 
 Route::get('/', fn () => redirect()->route('login'));
 
@@ -21,3 +22,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/checkin',       [CheckinController::class, 'store'])->name('checkin.store');
     Route::get('/checkin/result', [CheckinController::class, 'result'])->name('result');
 });
+// schedule
+    Route::get('/schedule',             [ScheduleController::class, 'index'])->name('schedule.index');
+    Route::get('/schedule/preferences', [ScheduleController::class, 'preferences'])->name('schedule.preferences');
+    Route::post('/schedule/preferences/update',[ScheduleController::class, 'updatePreference'])->name('schedule.preferences.update');
+    Route::post('/schedule/toggle',     [ScheduleController::class, 'toggle'])->name('schedule.toggle');
+
+    Route::get('/targets',        [TargetController::class, 'index'])->name('targets.index');
+    Route::post('/targets/update',[TargetController::class, 'update'])->name('targets.update');
