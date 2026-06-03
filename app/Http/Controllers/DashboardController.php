@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Carbon\Carbon;
+use App\Models\DailyCheckin;
+use App\Models\Target;
+use App\Models\Task;
 
 class DashboardController extends Controller
 {
@@ -18,41 +21,21 @@ class DashboardController extends Controller
         ]);
     }
 
-    // ─────────────────────────────────────────────────────────────
-
     private function getCalendar(): array
     {
         $now   = Carbon::now();
         $first = Carbon::create($now->year, $now->month, 1);
+        $days  = [];
 
-        $days = [];
-
-        // Padding hari bulan lalu
         for ($i = $first->dayOfWeek - 1; $i >= 0; $i--) {
-            $days[] = [
-                'day'     => $first->copy()->subDays($i + 1)->day,
-                'current' => false,
-                'today'   => false,
-            ];
+            $days[] = ['day' => $first->copy()->subDays($i + 1)->day, 'current' => false, 'today' => false];
         }
-
-        // Hari bulan ini
         for ($d = 1; $d <= $now->daysInMonth; $d++) {
-            $days[] = [
-                'day'     => $d,
-                'current' => true,
-                'today'   => $d === $now->day,
-            ];
+            $days[] = ['day' => $d, 'current' => true, 'today' => $d === $now->day];
         }
-
-        // Padding hari bulan depan
         $remaining = 42 - count($days);
         for ($d = 1; $d <= $remaining; $d++) {
-            $days[] = [
-                'day'     => $d,
-                'current' => false,
-                'today'   => false,
-            ];
+            $days[] = ['day' => $d, 'current' => false, 'today' => false];
         }
 
         return [
@@ -66,72 +49,106 @@ class DashboardController extends Controller
 
     private function getUpcomingTasks(): array
     {
-        // Nanti ganti dengan query Eloquent:
-        // return Task::where('user_id', auth()->id())
-        //     ->where('due_date', '>=', now())
-        //     ->orderBy('due_date')
-        //     ->limit(5)
-        //     ->get()
-        //     ->map(fn($t) => [
-        //         'title'    => $t->title,
-        //         'subtitle' => 'Starts in ' . now()->diffForHumans($t->due_date, true),
-        //         'due_date' => Carbon::parse($t->due_date)->format('d M'),
-        //     ])->toArray();
+        $tasks    = Task::where('user_id', auth()->id())->latest()->get();
+        $upcoming = [];
 
-        return [
-            [
-                'title'    => 'Learning Mathematics',
-                'subtitle' => 'Starts in 13 Hours',
-                'due_date' => Carbon::now()->addDay()->format('d M'),
-            ],
-            [
-                'title'    => 'Team Stand-up',
-                'subtitle' => 'Starts in 2 Hours',
-                'due_date' => Carbon::now()->format('d M'),
-            ],
-        ];
+        foreach ($tasks as $task) {
+            $subtasks = [
+                ['name' => $task->subtask_name,  'date' => $task->subtask_date,  'priority' => $task->subtask_priority],
+                ['name' => $task->subtask2_name, 'date' => $task->subtask2_date, 'priority' => $task->subtask2_priority],
+                ['name' => $task->subtask3_name, 'date' => $task->subtask3_date, 'priority' => $task->subtask3_priority],
+            ];
+
+            foreach ($subtasks as $sub) {
+                if (empty($sub['name']) || empty($sub['date'])) continue;
+
+                $date = Carbon::parse($sub['date']);
+                $diff = now()->diffInHours($date, false);
+
+                if ($diff < 0) {
+                    $subtitle = 'Overdue';
+                } elseif ($diff < 24) {
+                    $subtitle = "Starts in {$diff} Hours";
+                } else {
+                    $subtitle = "Starts in " . now()->diffInDays($date) . " Days";
+                }
+
+                $upcoming[] = [
+                    'title'    => $task->name . ' — ' . $sub['name'],
+                    'subtitle' => $subtitle,
+                    'due_date' => $date->format('d M'),
+                    'sort_date'=> $date->timestamp,
+                    'priority' => $sub['priority'] ?? 'medium',
+                ];
+            }
+        }
+
+        // Sort: overdue dulu, lalu terdekat
+        usort($upcoming, fn($a, $b) => $a['sort_date'] <=> $b['sort_date']);
+
+        // Hapus sort_date sebelum dikirim ke view
+        return array_map(function($t) {
+            unset($t['sort_date']);
+            return $t;
+        }, $upcoming);
     }
 
     private function getWeeklyStats(): array
     {
-        // Nanti ganti dengan query aggregasi dari DB:
-        // $stats = DailyCheckin::where('user_id', auth()->id())
-        //     ->whereBetween('date', [now()->startOfWeek(), now()->endOfWeek()])
-        //     ->orderBy('date')
-        //     ->pluck('energy_level', 'date');
+        $userId = auth()->id();
+        $start  = Carbon::now()->startOfWeek(Carbon::SUNDAY);
+        $end    = Carbon::now()->endOfWeek(Carbon::SATURDAY);
 
-        return [
-            'labels' => ['Sun', 'Mon', 'Tue', 'Wed', 'Thr', 'Fri', 'Sat'],
-            'energy' => [30, 55, 45, 70, 60, 80, 65],
-        ];
+        $checkins = DailyCheckin::where('user_id', $userId)
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->orderBy('date')
+            ->get()
+            ->keyBy(fn($c) => Carbon::parse($c->date)->dayOfWeek);
+
+        $energy = [];
+        for ($dow = 0; $dow <= 6; $dow++) {
+            $c = $checkins->get($dow);
+            $energy[] = $c ? round($c->energy_level * 20) : 0;
+        }
+
+        return ['labels' => ['Sun', 'Mon', 'Tue', 'Wed', 'Thr', 'Fri', 'Sat'], 'energy' => $energy];
     }
 
     private function getGoals(): array
     {
-        // Nanti ganti dengan:
-        // return Goal::where('user_id', auth()->id())
-        //     ->get()
-        //     ->map(fn($g) => ['type' => $g->type, 'text' => $g->text])
-        //     ->toArray();
+        $targets = Target::where('user_id', auth()->id())
+            ->whereIn('key', ['daily', 'weekly'])
+            ->pluck('content', 'key')
+            ->toArray();
 
         return [
-            ['type' => 'Daily',  'text' => 'Do something with my life'],
-            ['type' => 'Weekly', 'text' => 'Get a Girlfriend'],
+            ['type' => 'Daily',  'text' => $targets['daily']  ?? 'No daily target set yet.'],
+            ['type' => 'Weekly', 'text' => $targets['weekly'] ?? 'No weekly target set yet.'],
         ];
     }
 
     private function getCurrentCondition(): array
     {
-        // Nanti ganti dengan:
-        // $checkin = DailyCheckin::where('user_id', auth()->id())
-        //     ->whereDate('date', today())
-        //     ->first();
-        // $level = $checkin?->energy_level ?? 1;
+        $checkin = DailyCheckin::where('user_id', auth()->id())
+            ->whereDate('date', today())
+            ->latest()
+            ->first();
 
-        return [
-            'label' => 'Medium Energy',
-            'level' => 2,   // 1 = low, 2 = medium, 3 = high
-            'max'   => 3,
-        ];
+        if (!$checkin) {
+            return ['label' => 'No Check-In Yet', 'level' => 0, 'max' => 3];
+        }
+
+        $score = (
+            $checkin->energy_level +
+            $checkin->focus_level  +
+            $checkin->mood         +
+            $checkin->motivation   +
+            $checkin->available_time +
+            (6 - $checkin->stress_level)
+        ) / 6;
+
+        if ($score <= 2)   return ['label' => 'Low Energy',    'level' => 1, 'max' => 3];
+        if ($score <= 3.5) return ['label' => 'Medium Energy', 'level' => 2, 'max' => 3];
+        return                    ['label' => 'High Energy',   'level' => 3, 'max' => 3];
     }
 }

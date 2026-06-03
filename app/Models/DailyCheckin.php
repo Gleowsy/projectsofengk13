@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 class DailyCheckin extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'user_id',
         'energy_level',
@@ -14,5 +17,6 @@ class DailyCheckin extends Model
         'motivation',
         'available_time',
         'stress_level',
+        'date',
     ];
 }

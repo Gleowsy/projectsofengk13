@@ -11,18 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('daily_checkins', function (Blueprint $table) {
+        Schema::create('time_preferences', function (Blueprint $table) {
             $table->id();
-
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-
-            $table->integer('energy_level');
-            $table->integer('focus_level');
-            $table->integer('mood');
-            $table->integer('motivation');
-            $table->integer('available_time');
-            $table->integer('stress_level');
-
+            $table->string('key');        // sleep, lunch, breakfast, dinner, focus
+            $table->string('start_time'); // 20:00
+            $table->string('end_time');   // 09:00
             $table->timestamps();
         });
     }
@@ -32,6 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('daily_checkins');
+        Schema::dropIfExists('time_preferences');
     }
 };
