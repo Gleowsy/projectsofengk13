@@ -15,7 +15,6 @@ class DashboardController extends Controller
         return view('dashboard', [
             'calendar'         => $this->getCalendar(),
             'upcomingTasks'    => $this->getUpcomingTasks(),
-            'weeklyStats'      => $this->getWeeklyStats(),
             'goals'            => $this->getGoals(),
             'currentCondition' => $this->getCurrentCondition(),
         ]);
@@ -93,27 +92,6 @@ class DashboardController extends Controller
         }, $upcoming);
     }
 
-    private function getWeeklyStats(): array
-    {
-        $userId = auth()->id();
-        $start  = Carbon::now()->startOfWeek(Carbon::SUNDAY);
-        $end    = Carbon::now()->endOfWeek(Carbon::SATURDAY);
-
-        $checkins = DailyCheckin::where('user_id', $userId)
-            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
-            ->orderBy('date')
-            ->get()
-            ->keyBy(fn($c) => Carbon::parse($c->date)->dayOfWeek);
-
-        $energy = [];
-        for ($dow = 0; $dow <= 6; $dow++) {
-            $c = $checkins->get($dow);
-            $energy[] = $c ? round($c->energy_level * 20) : 0;
-        }
-
-        return ['labels' => ['Sun', 'Mon', 'Tue', 'Wed', 'Thr', 'Fri', 'Sat'], 'energy' => $energy];
-    }
-
     private function getGoals(): array
     {
         $targets = Target::where('user_id', auth()->id())
@@ -131,7 +109,7 @@ class DashboardController extends Controller
     {
         $checkin = DailyCheckin::where('user_id', auth()->id())
             ->whereDate('date', today())
-            ->latest()
+            ->orderByDesc('created_at')
             ->first();
 
         if (!$checkin) {

@@ -114,7 +114,7 @@
             letter-spacing: -.01em;
         }
 
-       
+
         .metrics-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -140,7 +140,7 @@
             margin-bottom: 14px;
         }
 
-       
+
         .radio-row {
             display: flex;
             align-items: center;
@@ -193,7 +193,7 @@
             color: var(--text-muted);
         }
 
-       
+
         .btn-submit {
             width: 100%;
             padding: 18px;
@@ -217,7 +217,7 @@
 
         .btn-submit:active { transform: translateY(0); }
 
-       
+
         .alert-error {
             background: rgba(239,68,68,.12);
             border: 1px solid rgba(239,68,68,.3);
@@ -336,9 +336,9 @@
                 <div class="metric">
                     <p class="metric__title">Available Time</p>
                     <div class="radio-row">
-                        @foreach (['15 Min','30 Min','1 Hr','3-5 Hr','All Day'] as $idx => $lbl)
+                        @foreach (array(1 => "15 Min", 2 => "30 Min", 3 => "1 Hr", 4 => "3-5 Hr", 5 => "All Day") as $idx => $lbl)
                             <label class="radio-opt">
-                                <input type="radio" name="available_time" value="{{ $idx + 1 }}" {{ old('available_time', 3) == $idx + 1 ? 'checked' : '' }} required>
+                                <input type="radio" name="available_time" value="{{ $idx }}" {{ old('available_time', 3) == $idx ? 'checked' : '' }} required>
                                 <span class="radio-circle"></span>
                             </label>
                         @endforeach

@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
     <style>
-        
+
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         :root {
@@ -336,41 +336,6 @@
         }
         .menu-card:hover .menu-card__arrow { color: var(--text-primary); }
 
-        /* Right column - stats */
-        .chart-wrap {
-            position: relative;
-            padding-left: 22px;
-            padding-bottom: 24px;
-        }
-
-        .chart-ylabel {
-            position: absolute;
-            left: 0;
-            top: 50%;
-            transform: translateY(-50%) rotate(-90deg);
-            font-size: .68rem;
-            color: var(--text-muted);
-            white-space: nowrap;
-        }
-
-        .chart-xlabels {
-            display: flex;
-            justify-content: space-between;
-            padding: 0 2px;
-            margin-top: 4px;
-        }
-
-        .chart-xlabels span { font-size: .68rem; color: var(--text-muted); flex: 1; text-align: center; }
-
-        .chart-date-lbl {
-            text-align: center;
-            font-size: .68rem;
-            color: var(--text-muted);
-            margin-top: 2px;
-        }
-
-        #weeklyChart { width: 100% !important; display: block; }
-
         /* Goals */
         .goals-list { list-style: none; display: flex; flex-direction: column; gap: 14px; }
 
@@ -603,15 +568,14 @@
                 <span class="menu-card__arrow">&#8250;</span>
             </a>
 
-            {{-- Weekly Insight --}}
+            {{-- Adaptive Productivity --}}
             <a href="{{ route('insights.index') }}" class="menu-card">
                 <span class="menu-card__ico">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="11" cy="11" r="8"/>
-                        <path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
+                        <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
                     </svg>
                 </span>
-                <span class="menu-card__lbl">Weekly Insight</span>
+                <span class="menu-card__lbl">Adaptive Productivity</span>
                 <span class="menu-card__arrow">&#8250;</span>
             </a>
 
@@ -619,21 +583,6 @@
 
         {{--right columns - Stats, Goals, Condition --}}
         <div class="col col--right">
-
-            {{-- Weekly Statistics --}}
-            <div class="w">
-                <h2 class="w__title">Weekly Statistics</h2>
-                <div class="chart-wrap">
-                    <span class="chart-ylabel">Energy</span>
-                    <canvas id="weeklyChart" height="120"></canvas>
-                    <div class="chart-xlabels">
-                        @foreach ($weeklyStats['labels'] as $lbl)
-                            <span>{{ $lbl }}</span>
-                        @endforeach
-                    </div>
-                    <p class="chart-date-lbl">Date</p>
-                </div>
-            </div>
 
             {{-- Goals --}}
             <div class="w">
@@ -671,7 +620,6 @@
 
 <script>
     window.ZENTRA = {
-        weeklyStats: {{ Js::from($weeklyStats) }},
         calendar: {
             year:  {{ $calendar['year'] }},
             month: {{ $calendar['month'] }},
@@ -713,7 +661,7 @@
     const btnNext = document.getElementById('cal-next');
 
     let { year, month } = window.ZENTRA.calendar;
-   
+
 
     function renderCalendar(y, m) {
         const firstDow   = new Date(y, m - 1, 1).getDay(); // 0 = Minggu
@@ -726,7 +674,7 @@
 
         const cells = [];
 
-        
+
         for (let i = firstDow - 1; i >= 0; i--) {
             cells.push({ d: prevTotal - i, cur: false, today: false });
         }
@@ -735,13 +683,13 @@
             cells.push({ d, cur: true, today: d === todayNum });
         }
 
-        
+
         const rem = 42 - cells.length;
         for (let d = 1; d <= rem; d++) {
             cells.push({ d, cur: false, today: false });
         }
 
-       
+
         elLabel.textContent = MONTHS[m - 1] + ' ' + y;
 
         let html = '';
@@ -774,91 +722,27 @@
     });
 })();
 
-/* 3. Weekly Chart */
+/* 3. Task Search */
 (function () {
-    const canvas = document.getElementById('weeklyChart');
-    if (!canvas) return;
+    const searchInput = document.getElementById('taskSearch');
+    const taskList = document.getElementById('task-list');
+    const taskItems = taskList.querySelectorAll('.task-item');
 
-    const ctx  = canvas.getContext('2d');
-    const data = window.ZENTRA.weeklyStats.energy;
+    searchInput.addEventListener('input', function () {
+        const searchTerm = this.value.toLowerCase().trim();
 
-    // Ukuran responsif
-    const W = canvas.parentElement.clientWidth - 26;
-    const H = 120;
-    canvas.width  = W;
-    canvas.height = H;
-
-    const PAD = { t: 10, r: 10, b: 6, l: 6 };
-    const maxV = Math.max(...data) || 1;
-
-    function xp(i) { return PAD.l + (i / (data.length - 1)) * (W - PAD.l - PAD.r); }
-    function yp(v) { return PAD.t + (1 - v / maxV) * (H - PAD.t - PAD.b); }
-
-    // Grid lines
-    ctx.strokeStyle = 'rgba(255,255,255,.05)';
-    ctx.lineWidth = 1;
-    for (let g = 0; g <= 4; g++) {
-        const y = PAD.t + (g / 4) * (H - PAD.t - PAD.b);
-        ctx.beginPath();
-        ctx.moveTo(PAD.l, y);
-        ctx.lineTo(W - PAD.r, y);
-        ctx.stroke();
-    }
-
-    // Gradient fill
-    const grad = ctx.createLinearGradient(0, PAD.t, 0, H);
-    grad.addColorStop(0, 'rgba(91,82,232,.35)');
-    grad.addColorStop(1, 'rgba(91,82,232,.00)');
-
-    ctx.beginPath();
-    ctx.moveTo(xp(0), yp(data[0]));
-    for (let i = 1; i < data.length; i++) {
-        const cpx = (xp(i - 1) + xp(i)) / 2;
-        ctx.bezierCurveTo(cpx, yp(data[i - 1]), cpx, yp(data[i]), xp(i), yp(data[i]));
-    }
-    ctx.lineTo(xp(data.length - 1), H);
-    ctx.lineTo(xp(0), H);
-    ctx.closePath();
-    ctx.fillStyle = grad;
-    ctx.fill();
-
-    // Line
-    ctx.beginPath();
-    ctx.moveTo(xp(0), yp(data[0]));
-    for (let i = 1; i < data.length; i++) {
-        const cpx = (xp(i - 1) + xp(i)) / 2;
-        ctx.bezierCurveTo(cpx, yp(data[i - 1]), cpx, yp(data[i]), xp(i), yp(data[i]));
-    }
-    ctx.strokeStyle = 'rgba(91,82,232,.9)';
-    ctx.lineWidth   = 2.5;
-    ctx.lineJoin    = 'round';
-    ctx.stroke();
-
-    // Dots
-    data.forEach(function (v, i) {
-        ctx.beginPath();
-        ctx.arc(xp(i), yp(v), 3.5, 0, Math.PI * 2);
-        ctx.fillStyle   = '#5b52e8';
-        ctx.fill();
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth   = 1.5;
-        ctx.stroke();
-    });
-})();
-
-/*4. Task Search Filter*/
-(function () {
-    var input = document.getElementById('taskSearch');
-    if (!input) return;
-
-    input.addEventListener('input', function () {
-        var q = this.value.toLowerCase().trim();
-        document.querySelectorAll('#task-list .task-item').forEach(function (el) {
-            var title = el.dataset.title || '';
-            el.style.opacity = (!q || title.includes(q)) ? '1' : '0.3';
+        taskItems.forEach(item => {
+            const taskTitle = item.getAttribute('data-title') || '';
+            
+            if (searchTerm === '' || taskTitle.includes(searchTerm)) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
+            }
         });
     });
 })();
+
 </script>
 
 </body>

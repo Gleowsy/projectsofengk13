@@ -43,8 +43,9 @@ Route::middleware('auth')->group(function () {
     Route::get('/targets',        [TargetController::class, 'index'])->name('targets.index');
     Route::post('/targets/update',[TargetController::class, 'update'])->name('targets.update');
 
-    // Insights
+    // Adaptive Productivity (was Insights)
     Route::get('/insights', [InsightController::class, 'index'])->name('insights.index');
+    Route::post('/checkin/apply-schedule', [CheckinController::class, 'applySchedule'])->name('checkin.apply_schedule');
 
     // Settings (sementara)
     Route::get('/settings', function () {
