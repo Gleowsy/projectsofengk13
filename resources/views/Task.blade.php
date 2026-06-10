@@ -204,7 +204,7 @@
         }
         .ef-divider::before, .ef-divider::after { content:''; flex:1; border-bottom:1px solid var(--border); }
 
-        .ef-subtask-row {
+        .ef-subtask-row {   
             display: flex; justify-content: space-between; align-items: center;
             gap: 14px; padding: 12px 0;
         }

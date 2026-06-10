@@ -435,6 +435,21 @@ class CheckinController extends Controller
     }
 
     /**
+     * Dismiss daily warning popup
+     */
+    public function dismissWarning(Request $request)
+{
+    $count = (int) $request->input('count', 0);
+
+    session([
+        'popup_dismissed_date'  => today()->toDateString(),
+        'popup_dismissed_count' => $count,
+    ]);
+
+    return response()->json(['success' => true]);
+}
+
+    /**
      * Reschedule otomatis task hari ini berdasarkan kondisi user.
      * (Kept for legacy use if needed)
      */

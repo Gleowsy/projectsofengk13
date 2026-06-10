@@ -406,7 +406,8 @@
             align-items: center;
             justify-content: center;
             background: rgba(0, 0, 0, 0.55);
-            z-index: 50;
+            z-index: 99999;
+            pointer-events: auto;
         }
 
         .warning-popup__card {
@@ -418,6 +419,8 @@
             max-width: 460px;
             width: min(92vw, 460px);
             position: relative;
+            z-index: 100000;
+            pointer-events: auto;
         }
 
         .warning-popup__head {
@@ -580,13 +583,10 @@
                     </div>
                 </div>
                 <p class="warning-popup__message">Some lower-priority tasks can be moved away so your most important work stays on track.</p>
-                <form method="POST" action="{{ route('checkin.apply_schedule') }}" class="warning-popup__actions">
-                    @csrf
-                    <input type="hidden" name="action" value="balance_day">
-                    <input type="hidden" name="target_date" value="{{ $dailyWarning['date'] }}">
-                    <button type="submit" class="warning-popup__btn warning-popup__btn--primary" id="warningPopupReschedule">Reschedule now</button>
+                <div class="warning-popup__actions">
+                    <button type="button" class="warning-popup__btn warning-popup__btn--primary" id="warningPopupReschedule">Reschedule now</button>
                     <button type="button" class="warning-popup__btn warning-popup__btn--secondary" id="warningPopupDismiss">Not now</button>
-                </form>
+                </div>
             </div>
         </div>
     @endif
@@ -898,27 +898,124 @@
         });
     });
 })();
+</script>
 
 @if (!empty($dailyWarning))
 <script>
-    (function () {
-        const popup = document.getElementById('warningPopup');
+// Debug: Mark that script started
+window.__popupScriptStarted = true;
 
-        const closePopup = function () {
-            if (popup) {
-                popup.style.display = 'none';
+// Aggressively setup popup handlers with retry
+let attemptCount = 0;
+const maxAttempts = 20;
+
+const setupPopup = () => {
+    attemptCount++;
+    window.__popupSetupAttempt = attemptCount;
+    
+    const popup = document.getElementById('warningPopup');
+    const dismissBtn = document.getElementById('warningPopupDismiss');
+    const closeBtn = document.getElementById('warningPopupClose');
+    const rescheduleBtn = document.getElementById('warningPopupReschedule');
+
+    if (!popup || !dismissBtn || !closeBtn || !rescheduleBtn) {
+        if (attemptCount < maxAttempts) {
+            console.log('Popup elements not ready, attempt', attemptCount);
+            setTimeout(setupPopup, 100);
+        } else {
+            window.__popupSetupFailed = 'Elements not found after max attempts';
+        }
+        return;
+    }
+
+    window.__popupElementsFound = true;
+
+   const dismissWarning = () => {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+    fetch('{{ route("checkin.dismiss_warning") }}', {
+        method: 'POST',
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            count: {{ $dailyWarning['count'] }}
+        })
+    }).catch(err => console.error('Dismiss error:', err));
+};
+
+    // Dismiss (Not now) - hide popup
+    dismissBtn.addEventListener('click', function(e) {
+        window.__dismissClicked = true;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        dismissWarning();
+        popup.style.display = 'none';
+    }, true);
+
+    // Close (X) - hide popup
+    closeBtn.addEventListener('click', function(e) {
+        window.__closeClicked = true;
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        dismissWarning();
+        popup.style.display = 'none';
+    }, true);
+
+    // Reschedule - navigate
+    rescheduleBtn.addEventListener('click', async function(e) {
+    e.preventDefault();
+
+    const csrfToken =
+        document.querySelector('meta[name="csrf-token"]').content;
+
+    try {
+        const response = await fetch(
+            '{{ route("checkin.apply_schedule") }}',
+            {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    action: 'balance_day',
+                    target_date: '{{ \Carbon\Carbon::parse($dailyWarning["date"])->format("Y-m-d") }}'
+                })
             }
-        };
+        );
 
-        document.addEventListener('click', function (event) {
-            const dismissBtn = event.target.closest('#warningPopupDismiss');
-            const closeBtn = event.target.closest('#warningPopupClose');
+        const data = await response.json();
 
-            if (dismissBtn || closeBtn) {
-                closePopup();
-            }
-        });
-    })();
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Failed to reschedule tasks.');
+        }
+
+    } catch(err) {
+        console.error(err);
+        alert('Error while rescheduling.');
+    }
+});
+
+    window.__popupSetupSuccess = true;
+};
+
+// Try immediately
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    setupPopup();
+} else {
+    document.addEventListener('DOMContentLoaded', setupPopup);
+}
+
+// Also try after delays
+setTimeout(setupPopup, 100);
+setTimeout(setupPopup, 500);
+setTimeout(setupPopup, 1000);
 </script>
 @endif
 

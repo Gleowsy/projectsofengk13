@@ -24,6 +24,8 @@ Route::middleware('auth')->group(function () {
     Route::get('/checkin',        [CheckinController::class, 'index'])->name('checkin.index');
     Route::post('/checkin',       [CheckinController::class, 'store'])->name('checkin.store');
     Route::get('/checkin/result', [CheckinController::class, 'result'])->name('result');
+    Route::post('/checkin/dismiss-warning', [CheckinController::class, 'dismissWarning'])->name('checkin.dismiss_warning');
+    Route::post('/checkin/apply-schedule', [CheckinController::class, 'applySchedule'])->name('checkin.apply_schedule');
 
     // Task
     Route::get('/task',           [TaskController::class, 'index'])->name('tasks.index');
@@ -47,7 +49,6 @@ Route::middleware('auth')->group(function () {
 
     // Adaptive Productivity (was Insights)
     Route::get('/insights', [InsightController::class, 'index'])->name('insights.index');
-    Route::post('/checkin/apply-schedule', [CheckinController::class, 'applySchedule'])->name('checkin.apply_schedule');
 
     // Settings (sementara)
     Route::get('/settings', function () {

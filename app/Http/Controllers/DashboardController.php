@@ -57,19 +57,25 @@ class DashboardController extends Controller
                 if (empty($sub['name']) || empty($sub['date'])) continue;
 
                 $date = Carbon::parse($sub['date']);
-                $diff = now()->diffInHours($date, false);
-
-                if ($diff < 0) {
-                    $subtitle = 'Overdue';
-                } elseif ($diff < 24) {
-                    $subtitle = "Starts in {$diff} Hours";
-                } else {
-                    $subtitle = "Starts in " . now()->diffInDays($date) . " Days";
-                }
 
                 $dueTimestamp = $date->copy();
+
                 if (!empty($sub['time'])) {
                     $dueTimestamp->setTimeFromTimeString($sub['time']);
+                } else {
+                    $dueTimestamp->endOfDay();
+                }
+
+                $minutes = now()->diffInMinutes($dueTimestamp, false);
+
+                if ($minutes < 0) {
+                    $subtitle = 'Overdue';
+                } elseif ($minutes < 60) {
+                    $subtitle = "Starts in {$minutes} Minutes";
+                } elseif ($minutes < 1440) {
+                    $subtitle = "Starts in " . floor($minutes / 60) . " Hours";
+                } else {
+                    $subtitle = "Starts in " . now()->diffInDays($dueTimestamp) . " Days";
                 }
 
                 $upcoming[] = [
@@ -146,6 +152,10 @@ class DashboardController extends Controller
 
     private function getDailyTaskWarning(): ?array
     {
+        // Check if user dismissed warning today
+        $dismissedDate = session('popup_dismissed_date');
+        $dismissedCount = session('popup_dismissed_count', 0);
+
         $dateCounts = [];
 
         $tasks = Task::where('user_id', auth()->id())->get();
@@ -165,14 +175,22 @@ class DashboardController extends Controller
 
         ksort($dateCounts);
 
-        foreach ($dateCounts as $date => $count) {
-            if ($count > 6) {
-                return [
-                    'date'  => Carbon::parse($date)->format('d M Y'),
-                    'count' => $count,
-                ];
-            }
+       foreach ($dateCounts as $date => $count) {
+
+            if (
+                $dismissedDate === today()->toDateString()
+                 && $count <= $dismissedCount
+         ) {
+            continue;
         }
+
+        if ($count >= 5) {
+        return [
+            'date'  => Carbon::parse($date)->format('d M Y'),
+            'count' => $count,
+        ];
+    }
+}
 
         return null;
     }
