@@ -622,7 +622,11 @@ function applySchedule() {
 
     fetch('{{ route("checkin.apply_schedule") }}', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrfToken },
+        headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'X-CSRF-TOKEN': csrfToken
+},
         body: JSON.stringify({ action: selectedAction })
     })
     .then(r => r.json())

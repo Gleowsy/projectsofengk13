@@ -431,10 +431,6 @@ class CheckinController extends Controller
             'changed' => $changed,
         ];
 
-        if (!$request->expectsJson()) {
-            return redirect()->route('schedule.index')->with('status', $response['message']);
-        }
-
         return response()->json($response);
     }
 
