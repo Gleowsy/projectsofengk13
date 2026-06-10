@@ -28,6 +28,8 @@ Route::middleware('auth')->group(function () {
     // Task
     Route::get('/task',           [TaskController::class, 'index'])->name('tasks.index');
     Route::post('/tasks/store',   [TaskController::class, 'store'])->name('tasks.store');
+    Route::put('/tasks/{task}',   [TaskController::class, 'update'])->name('tasks.update');
+    Route::delete('/tasks/{task}', [TaskController::class, 'destroy'])->name('tasks.destroy');
 
     // Schedule
     Route::get('/schedule',                    [ScheduleController::class, 'index'])->name('schedule.index');
@@ -37,7 +39,7 @@ Route::middleware('auth')->group(function () {
     Route::get('schedule/tasks', [ScheduleController::class, 'tasksByDate'])->name('schedule.tasks');
     Route::post('schedule/reschedule', [ScheduleController::class, 'rescheduleTask'])->name('schedule.reschedule');
     Route::post('/schedule/done', [ScheduleController::class, 'markDone'])->name('schedule.done');
-    
+
 
     // Targets
     Route::get('/targets',        [TargetController::class, 'index'])->name('targets.index');

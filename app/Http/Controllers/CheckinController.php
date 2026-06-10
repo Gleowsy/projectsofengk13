@@ -112,18 +112,12 @@ class CheckinController extends Controller
         $timeLabels = ['15 Min', '30 Min', '1 Hr', '3-5 Hr', 'All Day'];
         $availableTime = $checkinData['available_time'];
 
-        $subtaskGroups = [
-            ['name' => 'subtask_name',  'date' => 'subtask_date',  'time' => 'subtask_time',  'priority' => 'subtask_priority',  'field' => 'subtask'],
-            ['name' => 'subtask2_name', 'date' => 'subtask2_date', 'time' => 'subtask2_time', 'priority' => 'subtask2_priority', 'field' => 'subtask2'],
-            ['name' => 'subtask3_name', 'date' => 'subtask3_date', 'time' => 'subtask3_time', 'priority' => 'subtask3_priority', 'field' => 'subtask3'],
-        ];
-
         foreach ($tasks as $task) {
-            foreach ($subtaskGroups as $grp) {
-                $name     = $task->{$grp['name']};
-                $date     = $task->{$grp['date']};
-                $time     = $task->{$grp['time']};
-                $priority = $task->{$grp['priority']} ?? 'medium';
+            foreach ($task->formattedSubtasks() as $sub) {
+                $name     = $sub['name'];
+                $date     = $sub['date'];
+                $time     = $sub['time'];
+                $priority = $sub['priority'] ?? 'medium';
 
                 if (empty($name) || empty($date)) continue;
 
@@ -175,7 +169,7 @@ class CheckinController extends Controller
                         'task_id'       => $task->id,
                         'task_name'     => $task->name,
                         'subtask_name'  => $name,
-                        'subtask_field' => $grp['field'],
+                        'subtask_field' => 'subtask' . $sub['index'],
                         'priority'      => $priority,
                         'scheduled_time'=> $time ? Carbon::parse($time)->format('H:i') : null,
                         'scheduled_date'=> $taskDate,
@@ -287,8 +281,12 @@ class CheckinController extends Controller
         $action    = $request->input('action');
         $userId    = auth()->id();
         $today     = today()->toDateString();
-        $tomorrow  = today()->addDay()->toDateString();
+        $tomorrow  = today()->addDay()->toDateString();        $targetDate = null;
 
+        if ($action === 'balance_day') {
+            $request->validate(['target_date' => 'required|date']);
+            $targetDate = Carbon::parse($request->input('target_date'))->toDateString();
+        }
         $prefs = TimePreference::where('user_id', $userId)->get()->keyBy('key');
         $focusStart = $prefs->has('focus')
             ? Carbon::createFromFormat('H:i', $prefs['focus']->start_time)
@@ -297,64 +295,108 @@ class CheckinController extends Controller
         $tasks   = Task::where('user_id', $userId)->get();
         $changed = 0;
 
-        $subtaskGroups = [
-            ['name' => 'subtask_name',  'date' => 'subtask_date',  'time' => 'subtask_time',  'priority' => 'subtask_priority'],
-            ['name' => 'subtask2_name', 'date' => 'subtask2_date', 'time' => 'subtask2_time', 'priority' => 'subtask2_priority'],
-            ['name' => 'subtask3_name', 'date' => 'subtask3_date', 'time' => 'subtask3_time', 'priority' => 'subtask3_priority'],
-        ];
+        $subtaskQueue = [];
+        $rawSubtasksByTask = [];
 
         foreach ($tasks as $task) {
+            $rawSubtasksByTask[$task->id] = $task->subtasks ?: $task->formattedSubtasks();
+
+            foreach ($rawSubtasksByTask[$task->id] as $index => $sub) {
+                if (empty($sub['name']) || empty($sub['date']) || !empty($sub['done'])) {
+                    continue;
+                }
+
+                $subtaskQueue[] = [
+                    'task'     => $task,
+                    'taskId'   => $task->id,
+                    'index'    => $index,
+                    'sub'      => $sub,
+                    'date'     => Carbon::parse($sub['date'])->toDateString(),
+                    'time'     => $sub['time'] ?? null,
+                    'priority' => $sub['priority'] ?? 'medium',
+                ];
+            }
+        }
+
+        usort($subtaskQueue, function ($a, $b) {
+            if ($a['date'] !== $b['date']) {
+                return strcmp($a['date'], $b['date']);
+            }
+            if ($a['time'] !== $b['time']) {
+                if (empty($a['time'])) return 1;
+                if (empty($b['time'])) return -1;
+                return strcmp($a['time'], $b['time']);
+            }
+            return $this->priorityValue($a['priority']) <=> $this->priorityValue($b['priority']);
+        });
+
+        $highestPriorityOfDay = null;
+        foreach ($subtaskQueue as $entry) {
+            if ($entry['date'] === $targetDate) {
+                $priorityValue = $this->priorityValue($entry['priority']);
+                if ($highestPriorityOfDay === null || $priorityValue < $highestPriorityOfDay) {
+                    $highestPriorityOfDay = $priorityValue;
+                }
+            }
+        }
+
+        foreach ($subtaskQueue as $entry) {
+            $task      = $entry['task'];
+            $taskId    = $entry['taskId'];
+            $index     = $entry['index'];
+            $sub       = $entry['sub'];
+            $subDate   = $entry['date'];
+            $priority  = $entry['priority'];
+            $subtasks  = $rawSubtasksByTask[$taskId];
             $taskChanged = false;
 
-            foreach ($subtaskGroups as $idx => $grp) {
-                if (empty($task->{$grp['name']}) || empty($task->{$grp['date']})) continue;
-
-                // Skip if subtask is already done
-                $doneCol = ($idx + 1) === 1 ? 'subtask_done' : "subtask" . ($idx + 1) . "_done";
-                if ($task->{$doneCol} === true) continue;
-
-                $subDate  = Carbon::parse($task->{$grp['date']})->toDateString();
-                $priority = $task->{$grp['priority']} ?? 'medium';
-
-                switch ($action) {
+            switch ($action) {
                     case 'defer_all':
                         if ($subDate === $today) {
-                            $task->{$grp['date']} = $tomorrow;
-                            $task->{$grp['time']} = $focusStart->format('H:i:s');
+                            $subtasks[$index]['date'] = $tomorrow;
+                            $subtasks[$index]['time'] = $focusStart->format('H:i:s');
                             $taskChanged = true; $changed++;
                         }
                         break;
 
                     case 'keep_essential':
                         if ($subDate === $today && $priority !== 'high') {
-                            $task->{$grp['date']} = $tomorrow;
-                            $task->{$grp['time']} = $focusStart->format('H:i:s');
+                            $subtasks[$index]['date'] = $tomorrow;
+                            $subtasks[$index]['time'] = $focusStart->format('H:i:s');
                             $taskChanged = true; $changed++;
                         }
                         break;
 
                     case 'reschedule_focus':
                         if ($subDate === $today && $priority === 'high') {
-                            $task->{$grp['time']} = $focusStart->format('H:i:s');
+                            $subtasks[$index]['time'] = $focusStart->format('H:i:s');
                             $taskChanged = true; $changed++;
                         }
                         break;
 
                     case 'space_out':
                         if ($subDate === $today) {
-                            $currentTime = $task->{$grp['time']}
-                                ? Carbon::parse($task->{$grp['time']})->addMinutes(30)
+                            $currentTime = !empty($sub['time'])
+                                ? Carbon::parse($sub['time'])->addMinutes(30)
                                 : $focusStart->copy()->addHour();
-                            $task->{$grp['time']} = $currentTime->format('H:i:s');
+                            $subtasks[$index]['time'] = $currentTime->format('H:i:s');
                             $taskChanged = true; $changed++;
                         }
                         break;
 
                     case 'advance_tasks':
                         $diffDays = Carbon::parse($subDate)->diffInDays(today(), false);
-                        if ($diffDays < 0 && abs($diffDays) <= 3) { // upcoming 3 days
-                            $task->{$grp['date']} = $today;
-                            $task->{$grp['time']} = $focusStart->copy()->addHour()->format('H:i:s');
+                        if ($diffDays < 0 && abs($diffDays) <= 3) {
+                            $subtasks[$index]['date'] = $today;
+                            $subtasks[$index]['time'] = $focusStart->copy()->addHour()->format('H:i:s');
+                            $taskChanged = true; $changed++;
+                        }
+                        break;
+
+                    case 'balance_day':
+                        if ($subDate === $targetDate && $highestPriorityOfDay !== null && $this->priorityValue($priority) > $highestPriorityOfDay) {
+                            $subtasks[$index]['date'] = Carbon::parse($targetDate)->addDay()->toDateString();
+                            $subtasks[$index]['time'] = $focusStart->format('H:i:s');
                             $taskChanged = true; $changed++;
                         }
                         break;
@@ -362,12 +404,14 @@ class CheckinController extends Controller
                     case 'no_change':
                     case 'keep_schedule':
                     default:
-                        // No changes
                         break;
                 }
-            }
 
-            if ($taskChanged) $task->save();
+            if ($taskChanged) {
+                $rawSubtasksByTask[$taskId] = $subtasks;
+                $task->subtasks = $subtasks;
+                $task->save();
+            }
         }
 
         $messages = [
@@ -376,21 +420,38 @@ class CheckinController extends Controller
             'reschedule_focus' => "High-priority tasks rescheduled to your focus window.",
             'space_out'        => "Tasks spaced out with buffer time added.",
             'advance_tasks'    => "Upcoming tasks pulled forward to today.",
+            'balance_day'      => "Lower-priority tasks were shifted to make room for the highest priorities.",
             'keep_schedule'    => "Schedule kept as-is. Keep it up!",
             'no_change'        => "No changes made to your schedule.",
         ];
 
-        return response()->json([
+        $response = [
             'success' => true,
             'message' => $messages[$action] ?? 'Schedule updated.',
             'changed' => $changed,
-        ]);
+        ];
+
+        if (!$request->expectsJson()) {
+            return redirect()->route('schedule.index')->with('status', $response['message']);
+        }
+
+        return response()->json($response);
     }
 
     /**
      * Reschedule otomatis task hari ini berdasarkan kondisi user.
      * (Kept for legacy use if needed)
      */
+    private function priorityValue(string $priority): int
+    {
+        return match ($priority) {
+            'high' => 1,
+            'medium' => 2,
+            'low' => 3,
+            default => 4,
+        };
+    }
+
     private function autoReschedule(int $userId, string $level, float $score): array
     {
         return []; // Now handled via applySchedule endpoint

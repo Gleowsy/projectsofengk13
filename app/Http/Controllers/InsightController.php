@@ -86,18 +86,12 @@ class InsightController extends Controller
         $tasks    = Task::where('user_id', $userId)->get();
         $recommendations = [];
 
-        $subtaskGroups = [
-            ['name' => 'subtask_name',  'date' => 'subtask_date',  'time' => 'subtask_time',  'priority' => 'subtask_priority',  'field' => 'subtask'],
-            ['name' => 'subtask2_name', 'date' => 'subtask2_date', 'time' => 'subtask2_time', 'priority' => 'subtask2_priority', 'field' => 'subtask2'],
-            ['name' => 'subtask3_name', 'date' => 'subtask3_date', 'time' => 'subtask3_time', 'priority' => 'subtask3_priority', 'field' => 'subtask3'],
-        ];
-
         foreach ($tasks as $task) {
-            foreach ($subtaskGroups as $grp) {
-                $name     = $task->{$grp['name']};
-                $date     = $task->{$grp['date']};
-                $time     = $task->{$grp['time']};
-                $priority = $task->{$grp['priority']} ?? 'medium';
+            foreach ($task->formattedSubtasks() as $sub) {
+                $name     = $sub['name'];
+                $date     = $sub['date'];
+                $time     = $sub['time'];
+                $priority = $sub['priority'] ?? 'medium';
 
                 if (empty($name) || empty($date)) continue;
 
@@ -138,7 +132,7 @@ class InsightController extends Controller
                         'task_id'       => $task->id,
                         'task_name'     => $task->name,
                         'subtask_name'  => $name,
-                        'subtask_field' => $grp['field'],
+                        'subtask_field' => 'subtask' . $sub['index'],
                         'priority'      => $priority,
                         'scheduled_time'=> $time ? Carbon::parse($time)->format('H:i') : null,
                         'scheduled_date'=> $taskDate,

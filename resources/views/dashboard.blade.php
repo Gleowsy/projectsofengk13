@@ -396,6 +396,135 @@
             border-color: var(--border-focus);
         }
 
+        .warning-popup {
+            position: fixed;
+            left: 0;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 50;
+        }
+
+        .warning-popup__card {
+            background: rgba(20, 18, 40, 0.98);
+            border: 1px solid rgba(255,255,255,.12);
+            box-shadow: 0 24px 64px rgba(0,0,0,.55);
+            border-radius: 24px;
+            padding: 26px 26px 22px;
+            max-width: 460px;
+            width: min(92vw, 460px);
+            position: relative;
+        }
+
+        .warning-popup__head {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 16px;
+        }
+
+        .warning-popup__icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            background: #ff6b6b;
+            color: #fff;
+            display: grid;
+            place-items: center;
+            font-weight: 800;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .warning-popup__label {
+            color: var(--accent);
+            font-size: .78rem;
+            text-transform: uppercase;
+            letter-spacing: .18em;
+            margin-bottom: 4px;
+        }
+
+        .warning-popup__title {
+            margin: 0;
+            font-size: 1.15rem;
+            line-height: 1.3;
+            color: var(--text-primary);
+            font-weight: 700;
+        }
+
+        .warning-popup__message {
+            color: var(--text-muted);
+            font-size: .92rem;
+            line-height: 1.6;
+            margin: 0 0 18px;
+        }
+
+        .warning-popup__actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .warning-popup__stmt {
+            font-size: .88rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .warning-popup__close {
+            appearance: none;
+            background: rgba(255,255,255,.08);
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.15rem;
+            cursor: pointer;
+            padding: 10px 12px;
+            line-height: 1;
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            border-radius: 12px;
+        }
+
+        .warning-popup__close:hover {
+            background: rgba(255,255,255,.15);
+        }
+
+        .warning-popup__actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .warning-popup__btn {
+            border: none;
+            border-radius: 14px;
+            padding: 12px 18px;
+            cursor: pointer;
+            font-weight: 700;
+            transition: transform var(--ease), box-shadow var(--ease), background var(--ease);
+        }
+
+        .warning-popup__btn--primary {
+            background: var(--accent);
+            color: #fff;
+            box-shadow: var(--shadow-btn);
+        }
+
+        .warning-popup__btn--secondary {
+            background: rgba(255,255,255,.08);
+            color: var(--text-primary);
+        }
+
+        .warning-popup__btn:hover {
+            transform: translateY(-1px);
+        }
+
         /* Responsive */
         @media (max-width: 1024px) {
             .dash__grid { grid-template-columns: 1fr 1fr; }
@@ -438,6 +567,29 @@
 {{-- Dashboard body --}}
 <main class="dash">
     <h1 class="dash__title">Your Personalized Work Dashboard</h1>
+
+    @if (!empty($dailyWarning))
+        <div class="warning-popup" id="warningPopup">
+            <div class="warning-popup__card">
+                <button class="warning-popup__close" id="warningPopupClose" aria-label="Close warning">×</button>
+                <div class="warning-popup__head">
+                    <div class="warning-popup__icon">!</div>
+                    <div>
+                        <div class="warning-popup__label">Task overload</div>
+                        <h2 class="warning-popup__title">{{ $dailyWarning['count'] }} tasks on {{ $dailyWarning['date'] }}</h2>
+                    </div>
+                </div>
+                <p class="warning-popup__message">Some lower-priority tasks can be moved away so your most important work stays on track.</p>
+                <form method="POST" action="{{ route('checkin.apply_schedule') }}" class="warning-popup__actions">
+                    @csrf
+                    <input type="hidden" name="action" value="balance_day">
+                    <input type="hidden" name="target_date" value="{{ $dailyWarning['date'] }}">
+                    <button type="submit" class="warning-popup__btn warning-popup__btn--primary" id="warningPopupReschedule">Reschedule now</button>
+                    <button type="button" class="warning-popup__btn warning-popup__btn--secondary" id="warningPopupDismiss">Not now</button>
+                </form>
+            </div>
+        </div>
+    @endif
 
     <div class="dash__grid">
 
@@ -726,14 +878,18 @@
 (function () {
     const searchInput = document.getElementById('taskSearch');
     const taskList = document.getElementById('task-list');
-    const taskItems = taskList.querySelectorAll('.task-item');
+    const taskItems = taskList ? taskList.querySelectorAll('.task-item') : [];
+
+    if (!searchInput || !taskList) {
+        return;
+    }
 
     searchInput.addEventListener('input', function () {
         const searchTerm = this.value.toLowerCase().trim();
 
         taskItems.forEach(item => {
             const taskTitle = item.getAttribute('data-title') || '';
-            
+
             if (searchTerm === '' || taskTitle.includes(searchTerm)) {
                 item.style.display = '';
             } else {
@@ -743,7 +899,28 @@
     });
 })();
 
+@if (!empty($dailyWarning))
+<script>
+    (function () {
+        const popup = document.getElementById('warningPopup');
+
+        const closePopup = function () {
+            if (popup) {
+                popup.style.display = 'none';
+            }
+        };
+
+        document.addEventListener('click', function (event) {
+            const dismissBtn = event.target.closest('#warningPopupDismiss');
+            const closeBtn = event.target.closest('#warningPopupClose');
+
+            if (dismissBtn || closeBtn) {
+                closePopup();
+            }
+        });
+    })();
 </script>
+@endif
 
 </body>
 </html>

@@ -216,6 +216,25 @@
             color: var(--text); width: 150px;
         }
         .ef-input-subname::placeholder { color: var(--placeholder); }
+        .btn-remove-subtask {
+            background: rgba(255,255,255,.04);
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 50%;
+            width: 34px;
+            height: 34px;
+            color: var(--muted);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background var(--ease), color var(--ease);
+        }
+        .btn-remove-subtask:hover {
+            background: rgba(255,255,255,.12);
+            color: var(--text);
+        }
+
         .ef-input-date, .ef-input-time {
             background: transparent; border: none; outline: none;
             font-family: inherit; font-size: .82rem; color: var(--muted);
@@ -295,9 +314,7 @@
             @forelse($tasks as $task)
             <div class="tm-item" id="task-{{ $task->id }}"
                  data-name="{{ $task->name }}"
-                 data-s1n="{{ $task->subtask_name }}"  data-s1d="{{ $task->subtask_date }}"  data-s1t="{{ $task->subtask_time }}"  data-s1p="{{ $task->subtask_priority }}"
-                 data-s2n="{{ $task->subtask2_name }}" data-s2d="{{ $task->subtask2_date }}" data-s2t="{{ $task->subtask2_time }}" data-s2p="{{ $task->subtask2_priority }}"
-                 data-s3n="{{ $task->subtask3_name }}" data-s3d="{{ $task->subtask3_date }}" data-s3t="{{ $task->subtask3_time }}" data-s3p="{{ $task->subtask3_priority }}">
+                 data-subtasks="{{ e(json_encode($task->formattedSubtasks(), JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP)) }}">
 
                 <div class="tm-item__header">
                     <div class="tm-item__left">
@@ -307,33 +324,34 @@
                         <div>
                             <div class="tm-item__name">{{ $task->name }}</div>
                             <div class="tm-item__meta">
-                                {{ $task->subtask_date ? \Carbon\Carbon::parse($task->subtask_date)->format('d M') : 'No date' }}
-                            </div>
+                            @php $taskMeta = collect($task->formattedSubtasks())->first(); @endphp
+                            {{ !empty($taskMeta['date']) ? \Carbon\Carbon::parse($taskMeta['date'])->format('d M') : 'No date' }}
+                        </div>
                         </div>
                     </div>
                     <div class="tm-item__right">
-                        <button class="tm-action tm-action--edit js-btn-edit" title="Edit">
+                        <button type="button" class="tm-action tm-action--edit js-btn-edit" title="Edit" onclick="window.openTaskEdit(this)">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg>
                         </button>
-                        <button class="tm-action" title="Detail">
+                        <button type="button" class="tm-action tm-action--delete js-btn-delete" title="Delete">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6v14a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2V6"/><path d="M10 10v6"/><path d="M14 10v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        </button>
+                        <button type="button" class="tm-action" title="Detail">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                         </button>
                     </div>
                 </div>
 
                 @php
-                    $subtasks = [
-                        ['name'=>$task->subtask_name,  'date'=>$task->subtask_date,  'priority'=>$task->subtask_priority],
-                        ['name'=>$task->subtask2_name, 'date'=>$task->subtask2_date, 'priority'=>$task->subtask2_priority],
-                        ['name'=>$task->subtask3_name, 'date'=>$task->subtask3_date, 'priority'=>$task->subtask3_priority],
-                    ];
-                    $hasAny = collect($subtasks)->contains(fn($s) => !empty($s['name']));
+                    $subtasks = collect($task->formattedSubtasks());
                 @endphp
+                <script type="application/json" class="task-subtasks">
+                    {!! json_encode($subtasks->all(), JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP) !!}
+                </script>
 
-                @if($hasAny)
+                @if($subtasks->isNotEmpty())
                 <div class="subtask-chips">
                     @foreach($subtasks as $st)
-                        @if(!empty($st['name']))
                         <div class="subtask-chip">
                             <span class="chip-dot chip-dot--{{ $st['priority'] ?? 'none' }}"></span>
                             <div>
@@ -343,7 +361,6 @@
                                 </div>
                             </div>
                         </div>
-                        @endif
                     @endforeach
                 </div>
                 @endif
@@ -355,6 +372,11 @@
 
         <div class="tm-footer">Sub-Tasks</div>
     </div>
+
+    <form id="js-delete-form" method="POST" class="hidden">
+        @csrf
+        @method('DELETE')
+    </form>
 
     {{-- ════════════════════════════
          VIEW 2 : FORM (ADD / EDIT)
@@ -368,8 +390,9 @@
             <h1 class="workspace-title">Task Management</h1>
         </div>
 
-        <form action="{{ route('tasks.store') }}" method="POST">
+        <form action="{{ route('tasks.store') }}" method="POST" id="js-task-form">
             @csrf
+            <input type="hidden" name="_method" id="js-method-input" value="POST">
             <input type="hidden" name="task_id" id="js-task-id">
 
             <div class="ef-task-card">
@@ -387,7 +410,7 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg>
                             </span>
                         </div>
-                        <span class="ef-sub-hint">Add up to 3 sub-tasks below</span>
+                        <span class="ef-sub-hint">Add as many sub-tasks as you need</span>
                     </div>
                     <button type="button" class="ef-arrow-toggle open" id="js-subtask-toggle">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -397,89 +420,8 @@
                 {{-- Sub-tasks Panel --}}
                 <div class="ef-subtasks-panel" id="js-subtasks-panel">
                     <div class="ef-divider">Tasks</div>
-
-                    {{-- Row 1 --}}
-                    <div class="ef-subtask-row">
-                        <div class="ef-subtask-left">
-                            <div class="ef-inline-field">
-                                <input type="text" name="subtask_name" id="js-s1-name" class="ef-input-subname" placeholder="Sub-task 1">
-                                <span class="ef-pencil ef-pencil--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg></span>
-                            </div>
-                            <div class="ef-inline-field">
-                                <input type="date" name="subtask_date" id="js-s1-date" class="ef-input-date">
-                                <span class="ef-pencil ef-pencil--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg></span>
-                            </div>
-                            <div class="ef-inline-field">
-                                <input type="time" name="subtask_time" id="js-s1-time" class="ef-input-time">
-                                <span class="ef-pencil ef-pencil--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg></span>
-                            </div>
-                        </div>
-                        <div class="ef-priority-col">
-                            <span class="ef-priority-label">Priority</span>
-                            <div class="ef-priority-dots">
-                                <label><input type="radio" name="subtask_priority" id="js-s1-plow"    value="low">   <span class="epdot epdot--low"></span>   <span class="epdot-text">Low</span></label>
-                                <label><input type="radio" name="subtask_priority" id="js-s1-pmed"    value="medium" checked> <span class="epdot epdot--medium"></span> <span class="epdot-text">Medium</span></label>
-                                <label><input type="radio" name="subtask_priority" id="js-s1-phigh"   value="high">  <span class="epdot epdot--high"></span>  <span class="epdot-text">High</span></label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <hr class="ef-row-sep">
-
-                    {{-- Row 2 --}}
-                    <div class="ef-subtask-row">
-                        <div class="ef-subtask-left">
-                            <div class="ef-inline-field">
-                                <input type="text" name="subtask2_name" id="js-s2-name" class="ef-input-subname" placeholder="Sub-task 2">
-                                <span class="ef-pencil ef-pencil--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg></span>
-                            </div>
-                            <div class="ef-inline-field">
-                                <input type="date" name="subtask2_date" id="js-s2-date" class="ef-input-date">
-                                <span class="ef-pencil ef-pencil--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg></span>
-                            </div>
-                            <div class="ef-inline-field">
-                                <input type="time" name="subtask2_time" id="js-s2-time" class="ef-input-time">
-                                <span class="ef-pencil ef-pencil--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg></span>
-                            </div>
-                        </div>
-                        <div class="ef-priority-col">
-                            <span class="ef-priority-label">Priority</span>
-                            <div class="ef-priority-dots">
-                                <label><input type="radio" name="subtask2_priority" id="js-s2-plow"   value="low">   <span class="epdot epdot--low"></span>   <span class="epdot-text">Low</span></label>
-                                <label><input type="radio" name="subtask2_priority" id="js-s2-pmed"   value="medium" checked> <span class="epdot epdot--medium"></span> <span class="epdot-text">Medium</span></label>
-                                <label><input type="radio" name="subtask2_priority" id="js-s2-phigh"  value="high">  <span class="epdot epdot--high"></span>  <span class="epdot-text">High</span></label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <hr class="ef-row-sep">
-
-                    {{-- Row 3 --}}
-                    <div class="ef-subtask-row">
-                        <div class="ef-subtask-left">
-                            <div class="ef-inline-field">
-                                <input type="text" name="subtask3_name" id="js-s3-name" class="ef-input-subname" placeholder="Sub-task 3">
-                                <span class="ef-pencil ef-pencil--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg></span>
-                            </div>
-                            <div class="ef-inline-field">
-                                <input type="date" name="subtask3_date" id="js-s3-date" class="ef-input-date">
-                                <span class="ef-pencil ef-pencil--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg></span>
-                            </div>
-                            <div class="ef-inline-field">
-                                <input type="time" name="subtask3_time" id="js-s3-time" class="ef-input-time">
-                                <span class="ef-pencil ef-pencil--sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z"/></svg></span>
-                            </div>
-                        </div>
-                        <div class="ef-priority-col">
-                            <span class="ef-priority-label">Priority</span>
-                            <div class="ef-priority-dots">
-                                <label><input type="radio" name="subtask3_priority" id="js-s3-plow"   value="low">   <span class="epdot epdot--low"></span>   <span class="epdot-text">Low</span></label>
-                                <label><input type="radio" name="subtask3_priority" id="js-s3-pmed"   value="medium" checked> <span class="epdot epdot--medium"></span> <span class="epdot-text">Medium</span></label>
-                                <label><input type="radio" name="subtask3_priority" id="js-s3-phigh"  value="high">  <span class="epdot epdot--high"></span>  <span class="epdot-text">High</span></label>
-                            </div>
-                        </div>
-                    </div>
-
+                    <div id="js-subtasks-list"></div>
+                    <button type="button" class="btn-submit" id="js-btn-add-subtask" style="margin-top: 16px; width: auto;">+ Add Sub-task</button>
                 </div>{{-- end ef-subtasks-panel --}}
             </div>{{-- end ef-task-card --}}
 
@@ -511,70 +453,187 @@
     const btnCancel = document.getElementById('js-btn-cancel');
     const btnSubmit = document.getElementById('js-btn-submit');
     const taskIdInput = document.getElementById('js-task-id');
+    const methodInput = document.getElementById('js-method-input');
+    const formElement = document.getElementById('js-task-form');
     const nameInput   = document.getElementById('js-input-name');
 
-    
+
+    const subtasksList = document.getElementById('js-subtasks-list');
+    const btnAddSubtask = document.getElementById('js-btn-add-subtask');
+
     btnAdd.addEventListener('click', () => {
         clearForm();
+        addSubtaskRow();
         taskIdInput.value = '';
+        if (methodInput) {
+            methodInput.value = 'POST';
+        }
+        if (formElement) {
+            formElement.action = createTaskUrl;
+        }
         btnSubmit.textContent = 'Save';
         listView.classList.add('hidden');
         formView.classList.remove('hidden');
     });
 
-    
     btnCancel.addEventListener('click', () => {
         formView.classList.add('hidden');
         listView.classList.remove('hidden');
     });
 
-    
-    document.querySelectorAll('.js-btn-edit').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const item = this.closest('.tm-item');
-            const d    = item.dataset;
+    const deleteForm = document.getElementById('js-delete-form');
+    const deleteBaseUrl = '{{ url('/tasks') }}';
+    const createTaskUrl = '{{ route('tasks.store') }}';
+    const updateTaskBaseUrl = '{{ url('/tasks') }}';
 
-            clearForm();
-            taskIdInput.value  = item.id.replace('task-', '');
-            nameInput.value    = d.name || '';
+    window.openTaskEdit = function (button) {
+        const item = button.closest('.tm-item');
+        if (!item) {
+            return;
+        }
 
-            // Subtask 1
-            setField('js-s1-name', d.s1n);
-            setField('js-s1-date', d.s1d);
-            setField('js-s1-time', d.s1t);
-            setRadio('subtask_priority',  d.s1p || 'medium');
+        const taskId = item.id.replace('task-', '');
+        const subtasksScript = item.querySelector('script.task-subtasks');
+        let subtasks = [];
 
-            // Subtask 2
-            setField('js-s2-name', d.s2n);
-            setField('js-s2-date', d.s2d);
-            setField('js-s2-time', d.s2t);
-            setRadio('subtask2_priority', d.s2p || 'medium');
+        if (subtasksScript) {
+            try {
+                subtasks = JSON.parse(subtasksScript.textContent || '[]');
+            } catch (error) {
+                subtasks = [];
+            }
+        }
 
-            // Subtask 3
-            setField('js-s3-name', d.s3n);
-            setField('js-s3-date', d.s3d);
-            setField('js-s3-time', d.s3t);
-            setRadio('subtask3_priority', d.s3p || 'medium');
+        clearForm();
+        taskIdInput.value = taskId;
+        if (methodInput) {
+            methodInput.value = 'PUT';
+        }
+        if (formElement) {
+            formElement.action = `${updateTaskBaseUrl}/${taskId}`;
+        }
+        nameInput.value = item.dataset.name || '';
 
-            btnSubmit.textContent = 'Update Task';
-            listView.classList.add('hidden');
-            formView.classList.remove('hidden');
+        subtasks.forEach(sub => addSubtaskRow(sub));
+        if (subtasks.length === 0) {
+            addSubtaskRow();
+        }
+
+        btnSubmit.textContent = 'Update Task';
+        listView.classList.add('hidden');
+        formView.classList.remove('hidden');
+    };
+
+    document.querySelectorAll('.js-btn-edit').forEach(editBtn => {
+        editBtn.addEventListener('click', function () {
+            window.openTaskEdit(this);
         });
     });
 
-    function setField(id, val) {
-        const el = document.getElementById(id);
-        if (el) el.value = val || '';
+    document.querySelectorAll('.js-btn-delete').forEach(deleteBtn => {
+        deleteBtn.addEventListener('click', function () {
+            const item = this.closest('.tm-item');
+            const taskId = item.id.replace('task-', '');
+            if (!confirm('Delete this task and all sub-tasks?')) {
+                return;
+            }
+            if (deleteForm) {
+                deleteForm.action = `${deleteBaseUrl}/${taskId}`;
+                deleteForm.submit();
+            }
+        });
+    });
+
+    btnAddSubtask.addEventListener('click', () => addSubtaskRow());
+
+    function createSubtaskRow(data = {}) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'ef-subtask-row';
+
+        const nameValue = data.name || '';
+        const dateValue = data.date || '';
+        const timeValue = data.time || '';
+        const priorityValue = data.priority || 'medium';
+        const doneValue = data.done ? '1' : '0';
+
+        wrapper.innerHTML = `
+            <div class="ef-subtask-left">
+                <div class="ef-inline-field" style="width:100%;">
+                    <input type="text" class="ef-input-subname js-subtask-name" placeholder="Sub-task" value="${escapeHtml(nameValue)}">
+                    <button type="button" class="btn-remove-subtask" title="Remove subtask">×</button>
+                </div>
+                <div class="ef-inline-field">
+                    <input type="date" class="ef-input-date js-subtask-date" value="${escapeHtml(dateValue)}">
+                </div>
+                <div class="ef-inline-field">
+                    <input type="time" class="ef-input-time js-subtask-time" value="${escapeHtml(timeValue)}">
+                </div>
+            </div>
+            <div class="ef-priority-col">
+                <span class="ef-priority-label">Priority</span>
+                <div class="ef-priority-dots">
+                    <label><input type="radio" class="js-subtask-priority" value="low" ${priorityValue === 'low' ? 'checked' : ''}>   <span class="epdot epdot--low"></span>   <span class="epdot-text">Low</span></label>
+                    <label><input type="radio" class="js-subtask-priority" value="medium" ${priorityValue === 'medium' ? 'checked' : ''}> <span class="epdot epdot--medium"></span> <span class="epdot-text">Medium</span></label>
+                    <label><input type="radio" class="js-subtask-priority" value="high" ${priorityValue === 'high' ? 'checked' : ''}>  <span class="epdot epdot--high"></span>  <span class="epdot-text">High</span></label>
+                </div>
+            </div>
+            <input type="hidden" class="js-subtask-done" value="${doneValue}">
+        `;
+
+        wrapper.querySelector('.btn-remove-subtask').addEventListener('click', () => {
+            wrapper.remove();
+            refreshSubtaskRowNames();
+        });
+
+        return wrapper;
     }
-    function setRadio(name, val) {
-        const radio = document.querySelector(`input[name="${name}"][value="${val}"]`);
-        if (radio) radio.checked = true;
+
+    function addSubtaskRow(data = {}) {
+        const row = createSubtaskRow(data);
+        subtasksList.appendChild(row);
+        refreshSubtaskRowNames();
     }
+
+    function refreshSubtaskRowNames() {
+        subtasksList.querySelectorAll('.ef-subtask-row').forEach((row, index) => {
+            const nameInput = row.querySelector('.js-subtask-name');
+            const dateInput = row.querySelector('.js-subtask-date');
+            const timeInput = row.querySelector('.js-subtask-time');
+            const priorityInputs = row.querySelectorAll('.js-subtask-priority');
+            const doneInput = row.querySelector('.js-subtask-done');
+
+            if (nameInput) {
+                nameInput.name = `subtasks[${index}][name]`;
+            }
+            if (dateInput) {
+                dateInput.name = `subtasks[${index}][date]`;
+            }
+            if (timeInput) {
+                timeInput.name = `subtasks[${index}][time]`;
+            }
+            priorityInputs.forEach(input => {
+                input.name = `subtasks[${index}][priority]`;
+            });
+            if (doneInput) {
+                doneInput.name = `subtasks[${index}][done]`;
+            }
+        });
+    }
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     function clearForm() {
         document.querySelectorAll('#section-form input[type="text"]').forEach(i => i.value = '');
         document.querySelectorAll('#section-form input[type="date"]').forEach(i => i.value = '');
         document.querySelectorAll('#section-form input[type="time"]').forEach(i => i.value = '');
-        ['subtask_priority','subtask2_priority','subtask3_priority'].forEach(n => setRadio(n,'medium'));
+        subtasksList.innerHTML = '';
     }
 })();
 

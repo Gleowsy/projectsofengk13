@@ -15,7 +15,15 @@ class TaskController extends Controller
 
     public function store(Request $request)
     {
-        $request->validate(['name' => 'required|string|max:255']);
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'subtasks' => 'array',
+            'subtasks.*.name' => 'nullable|string|max:255',
+            'subtasks.*.date' => 'nullable|date',
+            'subtasks.*.time' => 'nullable|date_format:H:i',
+            'subtasks.*.priority' => 'nullable|in:low,medium,high',
+            'subtasks.*.done' => 'nullable|boolean',
+        ]);
 
         if ($request->filled('task_id')) {
             $task = Task::where('id', $request->task_id)
@@ -28,24 +36,46 @@ class TaskController extends Controller
 
         $task->name = $request->name;
 
-        $task->subtask_name     = $request->subtask_name     ?: null;
-        $task->subtask_date     = $this->parseDate($request->subtask_date);
-        $task->subtask_time     = $request->subtask_time     ?: null;
-        $task->subtask_priority = $request->subtask_priority ?: null;
-
-        $task->subtask2_name     = $request->subtask2_name     ?: null;
-        $task->subtask2_date     = $this->parseDate($request->subtask2_date);
-        $task->subtask2_time     = $request->subtask2_time     ?: null;
-        $task->subtask2_priority = $request->subtask2_priority ?: null;
-
-        $task->subtask3_name     = $request->subtask3_name     ?: null;
-        $task->subtask3_date     = $this->parseDate($request->subtask3_date);
-        $task->subtask3_time     = $request->subtask3_time     ?: null;
-        $task->subtask3_priority = $request->subtask3_priority ?: null;
+        $task->subtasks = collect($request->input('subtasks', []))
+            ->map(function ($sub) {
+                return [
+                    'name' => trim($sub['name'] ?? '') ?: null,
+                    'date' => $this->parseDate($sub['date'] ?? null),
+                    'time' => trim($sub['time'] ?? '') ?: null,
+                    'priority' => in_array($sub['priority'] ?? null, ['low','medium','high']) ? $sub['priority'] : null,
+                    'done' => isset($sub['done']) ? (bool) $sub['done'] : false,
+                ];
+            })
+            ->filter(function ($sub) {
+                return !empty($sub['name']) || !empty($sub['date']) || !empty($sub['time']) || !empty($sub['priority']);
+            })
+            ->values()
+            ->all();
 
         $task->save();
 
         return redirect()->route('tasks.index')->with('success', 'Task saved successfully!');
+    }
+
+    public function update(Request $request, Task $task)
+    {
+        if ($task->user_id !== auth()->id()) {
+            abort(403);
+        }
+
+        $request->merge(['task_id' => $task->id]);
+        return $this->store($request);
+    }
+
+    public function destroy(Task $task)
+    {
+        if ($task->user_id !== auth()->id()) {
+            abort(403);
+        }
+
+        $task->delete();
+
+        return redirect()->route('tasks.index')->with('success', 'Task deleted successfully!');
     }
 
     private function parseDate($date)

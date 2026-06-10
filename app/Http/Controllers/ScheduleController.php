@@ -13,23 +13,14 @@ class ScheduleController extends Controller
 
     private function extractSubtasks(Task $task): array
     {
-        $subs = [];
-        $groups = [
-            1 => ['name' => $task->subtask_name,  'date' => $task->subtask_date,  'time' => $task->subtask_time,  'priority' => $task->subtask_priority,  'done' => $task->subtask_done  ?? false],
-            2 => ['name' => $task->subtask2_name, 'date' => $task->subtask2_date, 'time' => $task->subtask2_time, 'priority' => $task->subtask2_priority, 'done' => $task->subtask2_done ?? false],
-            3 => ['name' => $task->subtask3_name, 'date' => $task->subtask3_date, 'time' => $task->subtask3_time, 'priority' => $task->subtask3_priority, 'done' => $task->subtask3_done ?? false],
-        ];
-
-        foreach ($groups as $num => $sub) {
-            if (empty($sub['name'])) continue;
-            $subs[] = array_merge($sub, [
-                'task_id'     => $task->id,
-                'task_name'   => $task->name,
-                'subtask_num' => $num,
-            ]);
-        }
-
-        return $subs;
+        return collect($task->formattedSubtasks())
+            ->map(function ($sub) use ($task) {
+                return array_merge($sub, [
+                    'task_id'     => $task->id,
+                    'task_name'   => $task->name,
+                    'subtask_num' => $sub['index'],
+                ]);
+            })->all();
     }
 
     private function getFocusStartTime(int $userId, string $key = 'focus', string $default = '14:00'): string
@@ -170,7 +161,7 @@ class ScheduleController extends Controller
     {
         $request->validate([
             'task_id'     => 'required|integer',
-            'subtask_num' => 'required|integer|in:1,2,3',
+            'subtask_num' => 'required|integer|min:1',
         ]);
 
         $userId = auth()->id();
@@ -178,22 +169,27 @@ class ScheduleController extends Controller
                       ->where('user_id', $userId)
                       ->firstOrFail();
 
-        $num     = (int) $request->subtask_num;
-        $dateCol = $num === 1 ? 'subtask_date' : "subtask{$num}_date";
-        $timeCol = $num === 1 ? 'subtask_time' : "subtask{$num}_time";
+        $num = (int) $request->subtask_num;
+        $subtasks = $task->formattedSubtasks();
+
+        if (!isset($subtasks[$num - 1])) {
+            abort(404);
+        }
 
         $focusStart = $this->getFocusStartTime($userId, 'focus', '14:00');
 
-        $currentDate = !empty($task->$dateCol)
-            ? Carbon::parse($task->$dateCol)
+        $currentDate = !empty($subtasks[$num - 1]['date'])
+            ? Carbon::parse($subtasks[$num - 1]['date'])
             : Carbon::today();
 
         $newDate = $currentDate->copy()->startOfDay()->lt(Carbon::today())
             ? Carbon::today()->addDay()
             : $currentDate->copy()->addDay();
 
-        $task->$dateCol = $newDate->toDateString();
-        $task->$timeCol = $focusStart;
+        $subtasks[$num - 1]['date'] = $newDate->toDateString();
+        $subtasks[$num - 1]['time'] = $focusStart;
+
+        $task->subtasks = $subtasks;
         $task->save();
 
         return response()->json([
@@ -210,7 +206,7 @@ class ScheduleController extends Controller
     {
         $request->validate([
             'task_id'     => 'required|integer',
-            'subtask_num' => 'required|integer|in:1,2,3',
+            'subtask_num' => 'required|integer|min:1',
             'done'        => 'required|boolean',
         ]);
 
@@ -219,10 +215,15 @@ class ScheduleController extends Controller
                       ->where('user_id', $userId)
                       ->firstOrFail();
 
-        $num     = (int) $request->subtask_num;
-        $doneCol = $num === 1 ? 'subtask_done' : "subtask{$num}_done";
+        $num = (int) $request->subtask_num;
+        $subtasks = $task->formattedSubtasks();
 
-        $task->$doneCol = $request->done;
+        if (!isset($subtasks[$num - 1])) {
+            abort(404);
+        }
+
+        $subtasks[$num - 1]['done'] = $request->done;
+        $task->subtasks = $subtasks;
         $task->save();
 
         return response()->json(['success' => true]);

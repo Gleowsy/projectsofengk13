@@ -17,6 +17,7 @@ class DashboardController extends Controller
             'upcomingTasks'    => $this->getUpcomingTasks(),
             'goals'            => $this->getGoals(),
             'currentCondition' => $this->getCurrentCondition(),
+            'dailyWarning'     => $this->getDailyTaskWarning(),
         ]);
     }
 
@@ -52,13 +53,7 @@ class DashboardController extends Controller
         $upcoming = [];
 
         foreach ($tasks as $task) {
-            $subtasks = [
-                ['name' => $task->subtask_name,  'date' => $task->subtask_date,  'priority' => $task->subtask_priority],
-                ['name' => $task->subtask2_name, 'date' => $task->subtask2_date, 'priority' => $task->subtask2_priority],
-                ['name' => $task->subtask3_name, 'date' => $task->subtask3_date, 'priority' => $task->subtask3_priority],
-            ];
-
-            foreach ($subtasks as $sub) {
+            foreach ($task->formattedSubtasks() as $sub) {
                 if (empty($sub['name']) || empty($sub['date'])) continue;
 
                 $date = Carbon::parse($sub['date']);
@@ -72,24 +67,43 @@ class DashboardController extends Controller
                     $subtitle = "Starts in " . now()->diffInDays($date) . " Days";
                 }
 
+                $dueTimestamp = $date->copy();
+                if (!empty($sub['time'])) {
+                    $dueTimestamp->setTimeFromTimeString($sub['time']);
+                }
+
                 $upcoming[] = [
                     'title'    => $task->name . ' — ' . $sub['name'],
                     'subtitle' => $subtitle,
                     'due_date' => $date->format('d M'),
-                    'sort_date'=> $date->timestamp,
+                    'sort_datetime' => $dueTimestamp->timestamp,
                     'priority' => $sub['priority'] ?? 'medium',
                 ];
             }
         }
 
-        // Sort: overdue dulu, lalu terdekat
-        usort($upcoming, fn($a, $b) => $a['sort_date'] <=> $b['sort_date']);
+        // Sort: nearest deadline first, then priority
+        usort($upcoming, fn($a, $b) =>
+            $a['sort_datetime'] === $b['sort_datetime']
+                ? $this->dashboardPriorityValue($a['priority']) <=> $this->dashboardPriorityValue($b['priority'])
+                : $a['sort_datetime'] <=> $b['sort_datetime']
+        );
 
         // Hapus sort_date sebelum dikirim ke view
         return array_map(function($t) {
-            unset($t['sort_date']);
+            unset($t['sort_datetime']);
             return $t;
         }, $upcoming);
+    }
+
+    private function dashboardPriorityValue(string $priority): int
+    {
+        return match ($priority) {
+            'high' => 1,
+            'medium' => 2,
+            'low' => 3,
+            default => 4,
+        };
     }
 
     private function getGoals(): array
@@ -128,5 +142,38 @@ class DashboardController extends Controller
         if ($score <= 2)   return ['label' => 'Low Energy',    'level' => 1, 'max' => 3];
         if ($score <= 3.5) return ['label' => 'Medium Energy', 'level' => 2, 'max' => 3];
         return                    ['label' => 'High Energy',   'level' => 3, 'max' => 3];
+    }
+
+    private function getDailyTaskWarning(): ?array
+    {
+        $dateCounts = [];
+
+        $tasks = Task::where('user_id', auth()->id())->get();
+        foreach ($tasks as $task) {
+            foreach ($task->formattedSubtasks() as $sub) {
+                if (empty($sub['name']) || empty($sub['date'])) {
+                    continue;
+                }
+                $date = Carbon::parse($sub['date'])->toDateString();
+                $dateCounts[$date] = ($dateCounts[$date] ?? 0) + 1;
+            }
+        }
+
+        if (empty($dateCounts)) {
+            return null;
+        }
+
+        ksort($dateCounts);
+
+        foreach ($dateCounts as $date => $count) {
+            if ($count > 6) {
+                return [
+                    'date'  => Carbon::parse($date)->format('d M Y'),
+                    'count' => $count,
+                ];
+            }
+        }
+
+        return null;
     }
 }
