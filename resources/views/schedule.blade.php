@@ -562,6 +562,9 @@ function renderTasks(tasks) {
     }
     list.innerHTML = tasks.map(buildCard).join('');
     updateCount();
+
+    // Tambahkan baris ini untuk memasang ulang event listener edit yang sempat mati
+    initDynamicTaskEvents(); 
 }
 
 function buildCard(t) {
