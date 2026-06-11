@@ -75,7 +75,8 @@ class DashboardController extends Controller
                 } elseif ($minutes < 1440) {
                     $subtitle = "Starts in " . floor($minutes / 60) . " Hours";
                 } else {
-                    $subtitle = "Starts in " . now()->diffInDays($dueTimestamp) . " Days";
+                    $daysLeft = now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($dueTimestamp)->startOfDay(), false);
+                    $subtitle = "Starts in {$daysLeft} Days";
                 }
 
                 $upcoming[] = [
