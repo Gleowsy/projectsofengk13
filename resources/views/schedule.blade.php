@@ -471,13 +471,15 @@ function renderCalendar() {
 
             if (cell < firstDay) {
                 dayNum  = daysInPrev - firstDay + cell + 1;
-                dateStr = `${viewYear}-${String(viewMonth).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+                const pm = viewMonth === 0 ? 11 : viewMonth - 1;
+                const py = viewMonth === 0 ? viewYear - 1 : viewYear;
+                dateStr = `${py}-${String(pm + 1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
                 td.classList.add('other-month');
             } else if (day > daysInMonth) {
                 dayNum      = nextDay++;
-                const nm    = viewMonth + 2 > 12 ? 1 : viewMonth + 2;
-                const ny    = viewMonth + 2 > 12 ? viewYear + 1 : viewYear;
-                dateStr     = `${ny}-${String(nm).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
+                const nm    = viewMonth === 11 ? 0 : viewMonth + 1;
+                const ny    = viewMonth === 11 ? viewYear + 1 : viewYear;
+                dateStr     = `${ny}-${String(nm + 1).padStart(2,'0')}-${String(dayNum).padStart(2,'0')}`;
                 td.classList.add('other-month');
             } else {
                 dayNum  = day++;
@@ -535,13 +537,17 @@ function loadTasks(date) {
     list.innerHTML = `<div class="skeleton"><div class="skeleton-card"></div><div class="skeleton-card"></div></div>`;
     document.getElementById('task-count').textContent = '';
 
-    fetch(`${R.tasks}?date=${date}`, {
+    fetch(`${R.tasks}?date=${encodeURIComponent(date)}`, {
         headers: { 'Accept':'application/json', 'X-CSRF-TOKEN': CSRF }
     })
-    .then(r => r.json())
+    .then(r => {
+        if (!r.ok) throw new Error('Failed to load tasks');
+        return r.json();
+    })
     .then(data => renderTasks(data.tasks))
     .catch(() => {
         list.innerHTML = `<div class="empty-state">Failed to load tasks.</div>`;
+        document.getElementById('task-count').textContent = '';
     });
 }
 
@@ -563,8 +569,10 @@ function renderTasks(tasks) {
     list.innerHTML = tasks.map(buildCard).join('');
     updateCount();
 
-    // Tambahkan baris ini untuk memasang ulang event listener edit yang sempat mati
-    initDynamicTaskEvents(); 
+    // Pasang ulang event listener ketika fungsi tersedia.
+    if (typeof initDynamicTaskEvents === 'function') {
+        initDynamicTaskEvents();
+    }
 }
 
 function buildCard(t) {
