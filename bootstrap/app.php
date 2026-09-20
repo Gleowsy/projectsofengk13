@@ -41,6 +41,7 @@ $app->singleton(
     App\Exceptions\Handler::class
 );
 
+$app->register(App\Providers\VercelServiceProvider::class);
 /*
 |--------------------------------------------------------------------------
 | Return The Application
